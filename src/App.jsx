@@ -27,7 +27,6 @@ function MainMap({ session }) {
   const markersLayer = useRef(null);
   const lineLayer = useRef(null);
   
-  // --- STATE ---
   const [memories, setMemories] = useState([]);
   const [feedMode, setFeedMode] = useState('mine'); 
   const [viewYear, setViewYear] = useState(2030);
@@ -43,27 +42,16 @@ function MainMap({ session }) {
     file: null 
   });
 
-  // --- 1. FETCH MEMORIES ---
   const fetchMemories = async () => {
     console.log("Fetching memories...");
-    
-    let query = supabase.from('memories').select(`
-      *,
-      profiles (username),
-      likes (count)
-    `);
-
+    let query = supabase.from('memories').select(`*, profiles (username), likes (count)`);
     if (feedMode === 'mine') {
       query = query.eq('user_id', session.user.id);
     }
-
     const { data, error } = await query;
     if (error) {
       console.error("Error fetching:", error);
-      alert("Error fetching data: " + error.message);
     } else {
-      console.log("Found memories:", data);
-      
       const formatted = data.map(m => ({
         ...m,
         like_count: m.likes?.[0]?.count || 0,
@@ -75,21 +63,16 @@ function MainMap({ session }) {
 
   useEffect(() => { fetchMemories(); }, [feedMode]);
 
-  // --- 2. MAP SETUP ---
   useEffect(() => {
     if (leafletMap.current) return;
     leafletMap.current = L.map(mapRef.current).setView([20, 0], 2);
-    
     const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(leafletMap.current);
     tiles.getContainer().className += ' dark-mode-tiles';
-    
     markersLayer.current = L.layerGroup().addTo(leafletMap.current);
     lineLayer.current = L.polyline([], { color: '#4ecdc4', weight: 4, dashArray: '10, 10' }).addTo(leafletMap.current);
-    
     leafletMap.current.on('click', (e) => window.dispatchEvent(new CustomEvent('map-click', { detail: e.latlng })));
   }, []);
 
-  // --- 3. CLICK LISTENER ---
   useEffect(() => {
     const handleMapClick = (e) => {
       if (isAddingMode) {
@@ -102,7 +85,6 @@ function MainMap({ session }) {
     return () => window.removeEventListener('map-click', handleMapClick);
   }, [isAddingMode]);
 
-  // --- 4. LIKE FUNCTION ---
   const handleLike = async (memoryId) => {
     const { error } = await supabase.from('likes').insert([{ user_id: session.user.id, memory_id: memoryId }]);
     if (!error) {
@@ -110,9 +92,8 @@ function MainMap({ session }) {
     }
   };
 
-  // --- 5. SAVE MEMORY ---
   const saveMemory = async () => {
-    if (!tempLocation) return alert("Click the map to set location!");
+    if (!tempLocation) return alert("TARGET LOCK REQUIRED: Click Map to Set Coordinates");
     setUploading(true);
 
     let mediaUrl = null;
@@ -121,7 +102,7 @@ function MainMap({ session }) {
       const fileName = `${Date.now()}.${fileExt}`;
       const { error } = await supabase.storage.from('memories').upload(fileName, form.file);
       if (error) {
-        alert("Upload Error: " + error.message);
+        alert("UPLOAD FAILED: " + error.message);
         setUploading(false);
         return;
       }
@@ -143,14 +124,11 @@ function MainMap({ session }) {
     }]);
 
     if (error) {
-      alert("Database Error: " + error.message);
+      alert("DATABASE REJECTION: " + error.message);
     } else {
       await fetchMemories();
-      
-      // AUTO-JUMP TO PIN
       leafletMap.current.flyTo([tempLocation[0], tempLocation[1]], 8, { duration: 1.5 });
       setViewYear(year); 
-
       setIsAddingMode(false);
       setTempLocation(null);
       setForm({ title: "", date: new Date().toISOString().split('T')[0], desc: "", addressQuery: "", file: null });
@@ -159,12 +137,9 @@ function MainMap({ session }) {
     setUploading(false);
   };
 
-  // --- 6. RENDER MARKERS ---
   useEffect(() => {
     if (!leafletMap.current) return;
-    
     const active = memories; 
-
     markersLayer.current.clearLayers();
     
     active.forEach(mem => {
@@ -180,12 +155,12 @@ function MainMap({ session }) {
       const popupDiv = document.createElement('div');
       popupDiv.className = 'sexy-popup';
       popupDiv.innerHTML = `
-        ${mem.media_url ? `<img src="${mem.media_url}" style="width:100%; border-radius:8px; margin-bottom:8px;" />` : ''}
-        <div style="font-size:0.8rem; color:#aaa; margin-bottom:5px;">@${mem.username}</div>
-        <strong>${mem.title}</strong><br/>
-        <span style="color:#888; font-size:0.8rem;">${mem.date}</span><br/>
-        <div style="margin: 5px 0;">${mem.description || ''}</div>
-        <button class="btn-like" id="like-${mem.id}">❤️ ${mem.like_count}</button>
+        ${mem.media_url ? `<img src="${mem.media_url}" style="width:100%; border-radius:4px; margin-bottom:8px; border:1px solid #333;" />` : ''}
+        <div style="font-size:0.7rem; color:#4ecdc4; margin-bottom:5px;">// AGENT: ${mem.username}</div>
+        <strong style="text-transform:uppercase; letter-spacing:1px;">${mem.title}</strong><br/>
+        <span style="color:#888; font-size:0.8rem;">DATE: ${mem.date}</span><br/>
+        <div style="margin: 5px 0; font-size:0.9rem;">${mem.description || ''}</div>
+        <button class="btn-like" id="like-${mem.id}" style="margin-top:5px; background:transparent; border:1px solid #ff0055; color:#ff0055; border-radius:4px; cursor:pointer;">❤️ ${mem.like_count}</button>
       `;
 
       setTimeout(() => {
@@ -197,10 +172,8 @@ function MainMap({ session }) {
     });
     
     if (feedMode === 'mine') {
-      // THE FIX IS HERE (changed mem to m)
       lineLayer.current.setLatLngs(active.map(m => [m.location_lat, m.location_lng]));
     }
-
   }, [viewYear, memories, feedMode]);
 
   return (
@@ -210,36 +183,35 @@ function MainMap({ session }) {
       {!isAddingMode && (
         <div className="ui-layer">
           <h1 className="title">ChronoMap</h1>
-          <div className="feed-toggle">
-            <button className={feedMode === 'mine' ? 'active' : ''} onClick={() => setFeedMode('mine')}>My Map</button>
-            <button className={feedMode === 'explore' ? 'active' : ''} onClick={() => setFeedMode('explore')}>🌍 Explore</button>
-          </div>
+          <p className="subtitle">TEMPORAL LOCATOR: {viewYear}</p>
           
-          <p className="subtitle" style={{marginTop:'10px'}}>Timeline: {viewYear}</p>
           <input type="range" min="2000" max="2030" value={viewYear} onChange={(e) => setViewYear(Number(e.target.value))} className="time-slider" />
           
-          <div style={{ marginTop: '15px', display: 'flex', gap: '10px' }}>
-            <button className="btn-primary" onClick={() => setIsAddingMode(true)}>➕ Pin</button>
-            <button className="btn-profile" onClick={() => supabase.auth.signOut()}>Logout</button>
+          <div className="feed-toggle">
+            <button className={feedMode === 'mine' ? 'active' : ''} onClick={() => setFeedMode('mine')}>MY DATA</button>
+            <button className={feedMode === 'explore' ? 'active' : ''} onClick={() => setFeedMode('explore')}>GLOBAL NET</button>
           </div>
+          
+          <button className="btn-primary" onClick={() => setIsAddingMode(true)}>+ NEW ENTRY</button>
+          <button className="btn-profile" onClick={() => supabase.auth.signOut()}>[ DISCONNECT ]</button>
         </div>
       )}
 
       {isAddingMode && (
         <div className="form-overlay">
           <div className="form-card">
-            <h2>Pin Memory</h2>
-            <p style={{color: tempLocation?'#4ecdc4':'#666', fontSize:'0.8rem', marginBottom: '10px'}}>
-              {tempLocation ? "📍 Location Set" : "👇 Click the map"}
+            <h2>NEW MEMORY ENTRY</h2>
+            <p style={{color: tempLocation?'#4ecdc4':'#ff0055', fontSize:'0.8rem', marginBottom: '15px', fontFamily:'monospace'}}>
+              {tempLocation ? ">> COORDINATES LOCKED" : ">> WAITING FOR MAP CLICK..."}
             </p>
-            <input type="text" placeholder="Title" value={form.title} onChange={e => setForm({...form, title: e.target.value})} className="input-field" />
+            <input type="text" placeholder="DATA_LABEL (TITLE)" value={form.title} onChange={e => setForm({...form, title: e.target.value})} className="input-field" />
             <input type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} className="input-field" />
-            <textarea placeholder="Description" value={form.desc} onChange={e => setForm({...form, desc: e.target.value})} className="input-field textarea" />
+            <textarea placeholder="LOG_DETAILS (DESCRIPTION)" value={form.desc} onChange={e => setForm({...form, desc: e.target.value})} className="input-field textarea" />
             <input type="file" accept="image/*" onChange={e => setForm({...form, file: e.target.files[0]})} className="input-field" />
             <div className="form-actions">
-              <button className="btn-cancel" onClick={() => setIsAddingMode(false)}>Cancel</button>
+              <button className="btn-cancel" onClick={() => setIsAddingMode(false)}>ABORT</button>
               <button className="btn-save" onClick={saveMemory} disabled={!tempLocation || uploading}>
-                {uploading ? "Uploading..." : "Post"}
+                {uploading ? "UPLOADING..." : "TRANSMIT"}
               </button>
             </div>
           </div>
